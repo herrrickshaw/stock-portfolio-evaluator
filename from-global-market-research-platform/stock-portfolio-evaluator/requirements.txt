@@ -1,0 +1,6 @@
+pandas>=1.5
+numpy>=1.23
+scipy>=1.9
+yfinance>=0.2
+# optional: only needed for China A-share history via the local market_data Postgres DB
+psycopg2-binary>=2.9
