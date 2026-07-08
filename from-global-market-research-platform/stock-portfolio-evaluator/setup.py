@@ -16,6 +16,8 @@ setup(
         # only needed for China A-share history via the local market_data Postgres DB;
         # every other data path works without it.
         "postgres": ["psycopg2-binary>=2.9"],
+        # only needed for BrokerReportIngestor's .xls/.xlsx parsing.
+        "broker-excel": ["openpyxl>=3.0", "xlrd>=2.0"],
     },
     entry_points={
         "console_scripts": [

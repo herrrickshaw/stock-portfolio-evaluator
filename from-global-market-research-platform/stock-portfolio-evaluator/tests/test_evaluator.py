@@ -12,7 +12,9 @@ import numpy as np
 import pandas as pd
 
 from stock_evaluator.evaluator import PortfolioEvaluator
-from stock_evaluator.ingest import TaxReportIngestor, _postgres_china_history, _sqlite_india_history
+from stock_evaluator.ingest import (
+    BrokerReportIngestor, TaxReportIngestor, _postgres_china_history, _sqlite_india_history,
+)
 from stock_evaluator.models import NewsvendorModel, StockEvaluator
 from stock_evaluator.portfolio import Holding, Portfolio
 
@@ -277,6 +279,66 @@ class SqliteIndiaHistoryTests(unittest.TestCase):
         with mock.patch.dict("os.environ", {"STOCK_EVALUATOR_INDIA_SQLITE": "/no/such/file.db"}):
             df = _sqlite_india_history("RELIANCE.NS", lookback_days=10)
         self.assertTrue(df.empty)
+
+
+class BrokerReportIngestorTests(unittest.TestCase):
+    """Synthetic fixtures shaped like INDmoney's real export layout (header row
+    preceded by account-summary rows, data terminated by a blank/footer row) —
+    not the user's actual files."""
+
+    def _write_xlsx(self, rows):
+        tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        tmp.close()
+        pd.DataFrame(rows).to_excel(tmp.name, header=False, index=False)
+        return tmp.name
+
+    def test_us_holdings_stops_at_blank_row(self):
+        path = self._write_xlsx([
+            ["Account Details", None, None, None, None],
+            ["Broker Name", "Alpaca", None, None, None],
+            [None, None, None, None, None],
+            ["Stock Symbol", "Holding Since", "Quantity", "Avg. Price ($)", "Total Value ($)"],
+            ["AAPL", "01 Jan 2026", 0.5, 170.0, 85.0],
+            ["MSFT", "02 Jan 2026", 0.25, 330.0, 82.5],
+            [None, None, None, None, None],
+            ["Disclaimer:-", None, None, None, None],
+        ])
+        holdings = BrokerReportIngestor.us_holdings_from_xls(path)
+        self.assertEqual(len(holdings), 2)
+        self.assertEqual(holdings[0].ticker, "AAPL")
+        self.assertEqual(holdings[0].market, "us")
+        self.assertAlmostEqual(holdings[0].quantity, 0.5)
+        self.assertAlmostEqual(holdings[0].avg_cost, 170.0)
+
+    def test_india_holdings_resolves_via_isin_map_and_flags_unresolved(self):
+        path = self._write_xlsx([
+            ["Holdings report as on 06-07-2026", None, None, None, None],
+            ["Stock Name", "ISIN", "Quantity", "Average buy price", "Buy Value"],
+            ["Reliance Industries Ltd", "INE002A01018", 1, 1300.0, 1300.0],
+            ["Externally Purchased holding with ISIN INE999Z99999", "INE999Z99999", 5, 0, 0],
+        ])
+        fake_isin_map = {"INE002A01018": "RELIANCE"}
+        holdings, unresolved = BrokerReportIngestor.india_holdings_from_xlsx(path, isin_map=fake_isin_map)
+
+        self.assertEqual(len(holdings), 2)
+        self.assertEqual(holdings[0].ticker, "RELIANCE")
+        self.assertEqual(holdings[0].market, "india")
+        self.assertAlmostEqual(holdings[0].avg_cost, 1300.0)
+        # unresolved ISIN: kept as the ticker (position not silently dropped), zero avg_cost -> None
+        self.assertEqual(holdings[1].ticker, "INE999Z99999")
+        self.assertIsNone(holdings[1].avg_cost)
+
+        self.assertEqual(len(unresolved), 1)
+        self.assertEqual(unresolved[0]["isin"], "INE999Z99999")
+
+    def test_merge_combines_quantity_and_reaverages_cost(self):
+        us = [Holding(ticker="AAPL", market="us", quantity=2, avg_cost=100.0)]
+        india = [Holding(ticker="AAPL", market="us", quantity=2, avg_cost=200.0)]  # duplicate on purpose
+        portfolio = BrokerReportIngestor.merge(us, india, name="test")
+        self.assertEqual(len(portfolio.holdings), 1)
+        merged = portfolio.holdings[0]
+        self.assertEqual(merged.quantity, 4)
+        self.assertAlmostEqual(merged.avg_cost, 150.0)  # (2*100 + 2*200) / 4
 
 
 if __name__ == "__main__":

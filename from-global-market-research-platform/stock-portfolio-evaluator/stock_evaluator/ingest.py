@@ -343,3 +343,115 @@ class TaxReportIngestor:
                 "term": term or "UNKNOWN",
             })
         return records
+
+
+# ── ISIN -> NSE symbol resolution (local, offline) ────────────────────────────
+
+_NSE_ISIN_CSV_CANDIDATES = [
+    _REPO_ROOT / "data" / "nse_equity_list.csv",
+    _REPO_ROOT / "herrrickshaw" / "data" / "nse_equity_list.csv",
+    _REPO_ROOT / "market_data_consolidated" / "india" / "nse_equity_list.csv",
+]
+
+
+def _load_nse_isin_map() -> dict[str, str]:
+    """ISIN -> bare NSE symbol, from whichever local nse_equity_list.csv copy exists.
+
+    Covers NSE-listed equities only — BSE-only listings and mutual-fund/ETF ISINs
+    (typically INF-prefixed) are frequently missing, so callers must handle
+    unresolved ISINs explicitly rather than assuming full coverage.
+    """
+    for path in _NSE_ISIN_CSV_CANDIDATES:
+        if not path.is_file():
+            continue
+        try:
+            df = pd.read_csv(path)
+            df.columns = [c.strip() for c in df.columns]
+            return dict(zip(df["ISIN NUMBER"], df["SYMBOL"]))
+        except Exception as exc:
+            log.debug("Failed to load NSE ISIN map from %s: %s", path, exc)
+    return {}
+
+
+class BrokerReportIngestor:
+    """Parses INDmoney's holdings-report Excel exports: an India (NSE demat) sheet
+    keyed by ISIN, and a US sheet (INDmoney routes US investing through Alpaca)
+    keyed directly by ticker. Both are `.xls`/`.xlsx` — needs xlrd/openpyxl.
+    """
+
+    @staticmethod
+    def _find_header_row(df: pd.DataFrame, marker: str) -> int:
+        for i, val in df[0].items():
+            if isinstance(val, str) and val.strip() == marker:
+                return i
+        raise ValueError(f"Could not find a row starting with {marker!r} in this sheet")
+
+    @staticmethod
+    def us_holdings_from_xls(path: str | Path) -> list[Holding]:
+        """'Stock Symbol' header row, fractional-share quantities, market='us'."""
+        df = pd.read_excel(path, sheet_name=0, header=None)
+        start = BrokerReportIngestor._find_header_row(df, "Stock Symbol") + 1
+        holdings = []
+        for _, row in df.iloc[start:].iterrows():
+            symbol = row[0]
+            if not isinstance(symbol, str) or not symbol.strip():
+                break  # end of data block (blank row / footer disclaimer text)
+            avg_cost = float(row[3]) if pd.notna(row[3]) else None
+            holdings.append(Holding(
+                ticker=symbol.strip(), market="us",
+                quantity=float(row[2]), avg_cost=avg_cost or None,
+            ))
+        return holdings
+
+    @staticmethod
+    def india_holdings_from_xlsx(path: str | Path,
+                                  isin_map: Optional[dict[str, str]] = None
+                                  ) -> tuple[list[Holding], list[dict]]:
+        """'Stock Name' header row, keyed by ISIN — the 'Stock Name' column is a
+        placeholder ('Externally Purchased holding with ISIN ...') for holdings
+        INDmoney never priced, so ISIN is the only reliable join key.
+
+        Returns (holdings, unresolved): unresolved entries still get a Holding
+        (ticker set to the raw ISIN, so quantity/value accounting isn't lost) but
+        won't fetch real quotes until manually remapped to an actual ticker.
+        """
+        isin_map = isin_map if isin_map is not None else _load_nse_isin_map()
+        df = pd.read_excel(path, sheet_name=0, header=None)
+        start = BrokerReportIngestor._find_header_row(df, "Stock Name") + 1
+        holdings: list[Holding] = []
+        unresolved: list[dict] = []
+        for _, row in df.iloc[start:].iterrows():
+            isin = row[1]
+            if not isinstance(isin, str) or not isin.strip():
+                break
+            name, qty = row[0], float(row[2])
+            avg_price = float(row[3]) if pd.notna(row[3]) else 0.0
+            symbol = isin_map.get(isin.strip())
+            if symbol is None:
+                unresolved.append({"name": name, "isin": isin.strip(), "quantity": qty, "avg_price": avg_price})
+                symbol = isin.strip()
+            holdings.append(Holding(
+                ticker=symbol, market="india", quantity=qty, avg_cost=avg_price or None,
+            ))
+        return holdings, unresolved
+
+    @staticmethod
+    def merge(*holding_lists: list[Holding], name: str = "combined") -> Portfolio:
+        """Merge holdings from multiple broker exports into one Portfolio, summing
+        quantity (and re-averaging cost) for any (market, ticker) seen more than once."""
+        merged: dict[tuple[str, str], Holding] = {}
+        for holdings in holding_lists:
+            for h in holdings:
+                key = (h.market, h.ticker)
+                if key not in merged:
+                    merged[key] = Holding(ticker=h.ticker, market=h.market, quantity=h.quantity,
+                                           avg_cost=h.avg_cost, buy_date=h.buy_date)
+                    continue
+                existing = merged[key]
+                total_qty = existing.quantity + h.quantity
+                if existing.avg_cost is not None and h.avg_cost is not None and total_qty:
+                    existing.avg_cost = (
+                        existing.avg_cost * existing.quantity + h.avg_cost * h.quantity
+                    ) / total_qty
+                existing.quantity = total_qty
+        return Portfolio(name=name, holdings=list(merged.values()))

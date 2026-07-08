@@ -3,7 +3,7 @@
 from .portfolio import Holding, Portfolio
 from .models import NewsvendorModel, StockEvaluator, EvaluationResult
 from .evaluator import PortfolioEvaluator, RebalanceReport
-from .ingest import TaxReportIngestor, CompositeDataSource
+from .ingest import TaxReportIngestor, CompositeDataSource, BrokerReportIngestor
 
 __version__ = "0.1.0"
 
@@ -17,4 +17,5 @@ __all__ = [
     "RebalanceReport",
     "TaxReportIngestor",
     "CompositeDataSource",
+    "BrokerReportIngestor",
 ]

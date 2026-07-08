@@ -1,6 +1,7 @@
 """Command-line interface for stock_evaluator.
 
     stock-evaluator ingest holdings.csv -o portfolio.json
+    stock-evaluator ingest-broker --us us_holdings.xls --india india_holdings.xlsx -o portfolio.json
     stock-evaluator evaluate portfolio.json -o report.md
     stock-evaluator evaluate portfolio.json --format json
 """
@@ -11,7 +12,7 @@ import sys
 from pathlib import Path
 
 from .evaluator import PortfolioEvaluator
-from .ingest import TaxReportIngestor
+from .ingest import BrokerReportIngestor, TaxReportIngestor
 from .portfolio import Portfolio
 
 
@@ -19,6 +20,34 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
     portfolio = TaxReportIngestor.holdings_from_csv(args.input, name=args.name)
     portfolio.save(args.output)
     print(f"Wrote {len(portfolio.holdings)} holdings to {args.output}")
+    return 0
+
+
+def _cmd_ingest_broker(args: argparse.Namespace) -> int:
+    if not args.us and not args.india:
+        print("Provide at least one of --us / --india", file=sys.stderr)
+        return 2
+
+    holding_lists = []
+    if args.us:
+        us_holdings = BrokerReportIngestor.us_holdings_from_xls(args.us)
+        print(f"Parsed {len(us_holdings)} US holdings from {args.us}")
+        holding_lists.append(us_holdings)
+    if args.india:
+        india_holdings, unresolved = BrokerReportIngestor.india_holdings_from_xlsx(args.india)
+        print(f"Parsed {len(india_holdings)} India holdings from {args.india}")
+        if unresolved:
+            print(f"WARNING: {len(unresolved)} India holdings could not be resolved to an NSE "
+                  f"ticker (ISIN not in the local nse_equity_list.csv — likely BSE-only or an "
+                  f"ETF/fund); kept under their raw ISIN as the ticker, so quantities are still "
+                  f"counted but won't get real price quotes until remapped manually:")
+            for u in unresolved:
+                print(f"  {u['isin']}  qty={u['quantity']:g}  {u['name']}")
+        holding_lists.append(india_holdings)
+
+    portfolio = BrokerReportIngestor.merge(*holding_lists, name=args.name)
+    portfolio.save(args.output)
+    print(f"Wrote {len(portfolio.holdings)} combined holdings to {args.output}")
     return 0
 
 
@@ -69,6 +98,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_ingest.add_argument("-o", "--output", default="portfolio.json")
     p_ingest.add_argument("--name", default=None)
     p_ingest.set_defaults(func=_cmd_ingest)
+
+    p_broker = sub.add_parser("ingest-broker",
+                               help="Build a portfolio.json from INDmoney's US (Alpaca) and/or India Excel exports")
+    p_broker.add_argument("--us", default=None, help="Path to the INDmoney US holdings .xls export")
+    p_broker.add_argument("--india", default=None, help="Path to the INDmoney India holdings .xlsx export")
+    p_broker.add_argument("-o", "--output", default="portfolio.json")
+    p_broker.add_argument("--name", default="combined")
+    p_broker.set_defaults(func=_cmd_ingest_broker)
 
     p_eval = sub.add_parser("evaluate", help="Run a rebalance check on a portfolio.json")
     p_eval.add_argument("portfolio", help="Path to portfolio.json")

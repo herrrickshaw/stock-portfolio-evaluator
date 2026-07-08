@@ -77,6 +77,30 @@ alone. `psycopg2-binary` is an optional extra (`pip install -e .[postgres]`)
   `uk/`, apparently from a substring-matching bug in whatever built that
   tree) — not trustworthy enough to route through without a real audit.
 
+## `BrokerReportIngestor` (INDmoney Excel exports)
+
+`india_holdings_from_xlsx()` resolves each row's ISIN to an NSE symbol via a
+local `nse_equity_list.csv` copy (`_load_nse_isin_map()`), since INDmoney's
+own "Stock Name" column is a placeholder (`"Externally Purchased holding with
+ISIN ..."`) for any holding it never priced itself. That list only covers
+NSE-listed equities as of whenever it was last refreshed — BSE-only listings
+and fund/ETF ISINs (often `INF`-prefixed) are frequently missing. Unresolved
+rows are **not dropped**: the raw ISIN is kept as the ticker so quantity/value
+accounting stays complete, and `ingest-broker` prints the full unresolved list
+so they can be remapped by hand. In one real run this was ~30% of rows (21/73).
+
+## Known limitation: yfinance rate limiting on large portfolios
+
+A single `evaluate` call makes up to 2 yfinance requests per holding (quote +
+history), plus one per *unresolved* ISIN placeholder (which always 404s, since
+it's not a real ticker) before falling back. On a 90-holding portfolio this
+was observed to occasionally trip Yahoo's rate limiting mid-run, which fails
+*fast* rather than slow — every US holding after the trip silently reported
+`NO_DATA` (0.0% weight) in about 7 seconds total, instead of the ~60-90s a
+clean run actually takes. There's no retry/backoff yet. If a report looks
+suspiciously fast and full of `NO_DATA`/`-` rows, re-run it — that's the
+signal something upstream failed, not that those holdings have no data.
+
 ## Install
 
 ```bash
@@ -90,6 +114,10 @@ pip install -e .
 # Build portfolio.json from a broker holdings export (flexible column names:
 # ticker/symbol, quantity/qty, avg_cost/buy_price, market, target_weight)
 stock-evaluator ingest holdings.csv -o portfolio.json
+
+# Build portfolio.json from INDmoney's US (Alpaca-routed) and/or India Excel exports
+# — merges both into one portfolio, summing quantity for any ticker in both
+stock-evaluator ingest-broker --us us_holdings.xls --india india_holdings.xlsx -o portfolio.json
 
 # Run a rebalance check
 stock-evaluator evaluate portfolio.json --format markdown -o report.md
