@@ -3,21 +3,38 @@
 CompositeDataSource tries every source it can find, in order of freshness/cost:
   1. This machine's Cassandra quote cache (backend/db), if the backend package
      and a running Cassandra are both reachable — cheap, already-computed RSI/EMA/fundamentals.
-  2. For china tickers only: the local `market_data` Postgres database, which has a
+  2. For india tickers: the local `nse_bhav_cache.db` SQLite file — a genuine, daily
+     -updated NSE Bhavcopy cache covering ~2,740 symbols back to mid-2025 (bare NSE
+     symbols, no .NS/.BO suffix). This is the broadest and freshest local India price
+     source found on this machine — several smaller/older India OHLCV SQLite files
+     also exist (`global_expansion_screener_framework/*.db`, ~60 curated large-caps
+     back to 2011) but aren't wired in here since bhav_cache already covers those same
+     tickers more currently, within the model's default lookback window.
+  3. For china tickers only: the local `market_data` Postgres database, which has a
      real, daily-updated OHLCV history for 291 China A-shares (everything else in
      that DB — other markets, fundamentals, and most `stocks` rows for china itself —
      is an empty/duplicate metadata stub, so it's not used for anything but china
      price history).
-  3. yfinance, for price history and as a fundamentals/quote fallback.
+  4. yfinance, for price history and as a fundamentals/quote fallback.
 
 None of these sources are required at import time: if a dependency isn't importable,
-or its service isn't reachable, the corresponding methods just return None/empty and
-callers fall back to the next source.
+or its service/file isn't reachable, the corresponding methods just return None/empty
+and callers fall back to the next source.
+
+Not wired in (investigated and rejected — see stock-portfolio-evaluator README):
+`Downloads/data/us_screener_output/screener.db` has no OHLCV time series at all (a
+single stale scan snapshot with an empty `last_price` column), so there is currently
+no local US price source beyond yfinance. `global-market-scanners/dvm_global.db` and
+`viability.db` cover other markets (e.g. Europe) but are point-in-time technical/
+summary snapshots, not price history, so they can't feed NewsvendorModel's return-
+volatility fit either.
 """
 from __future__ import annotations
 
 import csv
 import logging
+import os
+import sqlite3
 import sys
 from pathlib import Path
 from typing import Optional
@@ -42,6 +59,9 @@ except ImportError:
 
 # Local Postgres `market_data` DB — trust/peer auth, no password needed.
 _PG_CONN_KWARGS = dict(dbname="market_data", user="umashankar", host="localhost", port=5432)
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_INDIA_SQLITE = _REPO_ROOT / "market_data_consolidated" / "india" / "nse_bhav_cache.db"
 
 
 # ── ticker <-> market helpers (mirrors backend/fetchers/history.py conventions) ──
@@ -110,6 +130,43 @@ def _find_backend_quotes(market: str, tickers: list[str]) -> dict[str, dict]:
             sys.path.remove(str(backend_dir))
 
 
+# ── SQLite nse_bhav_cache access (india OHLCV only, best-effort) ─────────────
+
+def _sqlite_india_history(ticker: str, lookback_days: int) -> pd.DataFrame:
+    """Read India OHLCV from the local NSE Bhavcopy SQLite cache.
+
+    Symbols there are bare NSE tickers (no .NS/.BO suffix), matching Cassandra's
+    India convention. Path is overridable via STOCK_EVALUATOR_INDIA_SQLITE for
+    machines where market_data_consolidated/ lives somewhere else.
+    """
+    db_path = Path(os.environ["STOCK_EVALUATOR_INDIA_SQLITE"]) if os.environ.get(
+        "STOCK_EVALUATOR_INDIA_SQLITE") else _DEFAULT_INDIA_SQLITE
+    if not db_path.is_file():
+        return pd.DataFrame(columns=["close"])
+    bare = bare_ticker(ticker)
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=3)
+    except Exception as exc:
+        log.debug("nse_bhav_cache.db open failed: %s", exc)
+        return pd.DataFrame(columns=["close"])
+    try:
+        rows = conn.execute(
+            "SELECT d, close FROM prices WHERE symbol = ? ORDER BY d DESC LIMIT ?",
+            (bare, lookback_days),
+        ).fetchall()
+    except Exception as exc:
+        log.debug("nse_bhav_cache.db query failed for %s: %s", ticker, exc)
+        return pd.DataFrame(columns=["close"])
+    finally:
+        conn.close()
+
+    if not rows:
+        return pd.DataFrame(columns=["close"])
+    df = pd.DataFrame(rows, columns=["date", "close"])
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date").sort_index()
+
+
 # ── Postgres market_data access (china OHLCV only, best-effort) ──────────────
 
 def _postgres_china_history(ticker: str, lookback_days: int) -> pd.DataFrame:
@@ -154,7 +211,10 @@ def _postgres_china_history(ticker: str, lookback_days: int) -> pd.DataFrame:
 
     if not rows:
         return pd.DataFrame(columns=["close"])
+    # close_price is Postgres `numeric`, which psycopg2 hands back as Decimal —
+    # cast to float or np.log()/std() blow up downstream.
     df = pd.DataFrame(rows, columns=["date", "close"]).set_index("date").sort_index()
+    df["close"] = df["close"].astype(float)
     return df
 
 
@@ -202,7 +262,9 @@ class CompositeDataSource:
             return self._history_cache[key]
 
         df = pd.DataFrame(columns=["close"])
-        if market == "china":
+        if market == "india":
+            df = _sqlite_india_history(ticker, lookback_days)
+        elif market == "china":
             df = _postgres_china_history(ticker, lookback_days)
 
         if df.empty and HAS_YF:

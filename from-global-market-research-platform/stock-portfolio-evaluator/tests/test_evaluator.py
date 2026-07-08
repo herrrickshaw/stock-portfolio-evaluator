@@ -1,8 +1,10 @@
 """Unit tests for stock_evaluator. Pure synthetic data — no network calls."""
 from __future__ import annotations
 
+import sqlite3
 import tempfile
 import unittest
+from decimal import Decimal
 from pathlib import Path
 from unittest import mock
 
@@ -10,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from stock_evaluator.evaluator import PortfolioEvaluator
-from stock_evaluator.ingest import TaxReportIngestor, _postgres_china_history
+from stock_evaluator.ingest import TaxReportIngestor, _postgres_china_history, _sqlite_india_history
 from stock_evaluator.models import NewsvendorModel, StockEvaluator
 from stock_evaluator.portfolio import Holding, Portfolio
 
@@ -212,9 +214,13 @@ class PostgresChinaHistoryTests(unittest.TestCase):
     """Mocks psycopg2 entirely — no real DB connection made."""
 
     def test_maps_suffixed_ticker_to_bare_float_and_parses_rows(self):
+        # psycopg2 hands back Postgres `numeric` columns as Decimal, not float —
+        # use Decimal here so a regression (np.log() choking on Decimal) fails loudly.
         mock_cursor = mock.MagicMock()
         mock_cursor.__enter__.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = [("2024-01-02", 10.5), ("2024-01-03", 10.7)]
+        mock_cursor.fetchall.return_value = [
+            ("2024-01-02", Decimal("10.5")), ("2024-01-03", Decimal("10.7")),
+        ]
         mock_conn = mock.MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
@@ -226,6 +232,8 @@ class PostgresChinaHistoryTests(unittest.TestCase):
         self.assertEqual(query_params[0], "600519.0")  # tries the '.0'-suffixed form first
         self.assertEqual(query_params[1], "600519")    # and the bare form as fallback
         self.assertEqual(list(df["close"]), [10.5, 10.7])
+        self.assertEqual(df["close"].dtype, np.float64)
+        np.log(df["close"])  # must not raise — this is what broke before the astype(float) fix
 
     def test_non_numeric_ticker_skips_query_entirely(self):
         with mock.patch("stock_evaluator.ingest.psycopg2.connect") as connect:
@@ -236,6 +244,38 @@ class PostgresChinaHistoryTests(unittest.TestCase):
     def test_connection_failure_returns_empty_frame(self):
         with mock.patch("stock_evaluator.ingest.psycopg2.connect", side_effect=Exception("no db")):
             df = _postgres_china_history("600519.SS", lookback_days=10)
+        self.assertTrue(df.empty)
+
+
+class SqliteIndiaHistoryTests(unittest.TestCase):
+    """Uses a real temp SQLite file with the nse_bhav_cache.db schema — no mocking needed."""
+
+    def _make_bhav_db(self, rows):
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        conn = sqlite3.connect(tmp.name)
+        conn.execute(
+            "CREATE TABLE prices(symbol TEXT, d TEXT, open REAL, high REAL, low REAL, "
+            "close REAL, volume INTEGER, PRIMARY KEY(symbol, d))"
+        )
+        conn.executemany("INSERT INTO prices(symbol, d, close) VALUES (?, ?, ?)", rows)
+        conn.commit()
+        conn.close()
+        return tmp.name
+
+    def test_bare_symbol_lookup_strips_suffix(self):
+        db_path = self._make_bhav_db([
+            ("RELIANCE", "2026-07-01", 1300.0),
+            ("RELIANCE", "2026-07-02", 1310.0),
+            ("TCS", "2026-07-01", 3900.0),
+        ])
+        with mock.patch.dict("os.environ", {"STOCK_EVALUATOR_INDIA_SQLITE": db_path}):
+            df = _sqlite_india_history("RELIANCE.NS", lookback_days=10)
+        self.assertEqual(list(df["close"]), [1300.0, 1310.0])
+
+    def test_missing_db_file_returns_empty(self):
+        with mock.patch.dict("os.environ", {"STOCK_EVALUATOR_INDIA_SQLITE": "/no/such/file.db"}):
+            df = _sqlite_india_history("RELIANCE.NS", lookback_days=10)
         self.assertTrue(df.empty)
 
 

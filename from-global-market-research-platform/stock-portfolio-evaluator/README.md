@@ -31,7 +31,16 @@ of the stock's log returns projected over the holding horizon.
 1. This repo's `backend/db` Cassandra quote cache, if `backend/` is present
    next to this package and Cassandra is reachable — reuses already-computed
    RSI/EMA/fundamentals instead of re-fetching.
-2. For `china` tickers only: the local `market_data` Postgres database
+2. For `india` tickers: `market_data_consolidated/india/nse_bhav_cache.db`, a
+   local SQLite NSE Bhavcopy cache — ~2,740 symbols (close to the full NSE
+   universe), daily-updated through the current date, bare symbols (no
+   `.NS`/`.BO` suffix). Path is overridable via `STOCK_EVALUATOR_INDIA_SQLITE`.
+   Several smaller/older India OHLCV SQLite files also exist on this machine
+   (`global_expansion_screener_framework/*.db`, ~60 curated large-caps back to
+   2011) but aren't wired in — `nse_bhav_cache.db` already covers those same
+   tickers more currently within the model's default lookback window, so
+   adding the older files would only add redundant, staler rows.
+3. For `china` tickers only: the local `market_data` Postgres database
    (`psql -d market_data`, connects as the local user, no password). That DB's
    `stocks`/`fundamentals` tables are empty metadata stubs for every market
    except china, but its `ohlcv_history` table has real, daily-updated price
@@ -41,13 +50,32 @@ of the stock's log returns projected over the holding horizon.
    appear as both `'600519.0'` and `'600519'` from different load runs, only
    one of which has OHLCV attached; `ingest.py` tries both at the query
    boundary rather than assuming a single format.
-3. `yfinance`, for price history and as a quote fallback.
+4. `yfinance`, for price history and as a quote fallback (the only price
+   source for US and every other market — see below).
 
 None of these are hard dependencies: if Cassandra isn't running, `backend/`
-isn't importable, or Postgres/`psycopg2` isn't reachable, everything falls
-through to the next source, down to `yfinance` alone. `psycopg2-binary` is an
-optional extra (`pip install -e .[postgres]`) — not required unless you want
-the China history path.
+isn't importable, the SQLite file is missing, or Postgres/`psycopg2` isn't
+reachable, everything falls through to the next source, down to `yfinance`
+alone. `psycopg2-binary` is an optional extra (`pip install -e .[postgres]`)
+— not required unless you want the China history path; `sqlite3` is stdlib.
+
+### Investigated and deliberately *not* wired in
+
+- `Downloads/data/us_screener_output/screener.db` — no OHLCV time series at
+  all, just a single stale scan snapshot (`last_price` is empty for most
+  rows, `scanned_at` is a single fixed date). There is currently no local US
+  price source beyond yfinance.
+- `global-market-scanners/dvm_global.db` and `viability.db` — do cover other
+  markets (e.g. Europe, individual European exchanges), but they're
+  point-in-time technical-indicator/strategy-summary snapshots, not price
+  history, so they can't feed `NewsvendorModel`'s return-volatility fit.
+- `global-market-scanners/edgar_facts.db` — SEC XBRL fundamentals (US), not
+  price data.
+- `market_data_consolidated/{japan,uk,...}/*.parquet` — per-ticker parquet
+  caches, but spot-checking them found tickers misfiled under the wrong
+  market folder (e.g. Indian `.NS`/`.BO` tickers sitting under `japan/` and
+  `uk/`, apparently from a substring-matching bug in whatever built that
+  tree) — not trustworthy enough to route through without a real audit.
 
 ## Install
 
