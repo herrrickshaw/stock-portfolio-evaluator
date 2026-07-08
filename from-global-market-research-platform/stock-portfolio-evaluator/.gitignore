@@ -7,3 +7,5 @@ dist/
 portfolio.json
 report.md
 report.json
+reports/
+.venv/
