@@ -1,5 +1,7 @@
 # Stock Portfolio Evaluator
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/herrrickshaw/stock-portfolio-evaluator/blob/main/notebooks/colab_test.ipynb)
+
 A comprehensive stock portfolio analysis tool using the **Newsvendor Model** for inventory optimization applied to stock holdings.
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
