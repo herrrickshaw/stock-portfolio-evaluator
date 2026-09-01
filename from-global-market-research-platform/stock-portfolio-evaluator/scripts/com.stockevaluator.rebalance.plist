@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- launchd agent: run the portfolio rebalance check every Monday at 08:00 local time.
+     This is a standalone schedule, independent of com.screener.dashboard's daily 08:30 run.
+
+     Install:
+       bash scripts/install_schedule.sh
+     or manually:
+       cp scripts/com.stockevaluator.rebalance.plist ~/Library/LaunchAgents/
+       launchctl load  ~/Library/LaunchAgents/com.stockevaluator.rebalance.plist
+     Remove:
+       launchctl unload ~/Library/LaunchAgents/com.stockevaluator.rebalance.plist
+       rm ~/Library/LaunchAgents/com.stockevaluator.rebalance.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stockevaluator.rebalance</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__PKG_DIR__/scripts/run_rebalance_check.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/stock-evaluator-rebalance.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/stock-evaluator-rebalance.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
