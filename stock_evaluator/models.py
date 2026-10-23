@@ -173,7 +173,7 @@ class StockEvaluator:
                   current_price: float,
                   purchase_price: float,
                   quantity: int,
-                  sector: str = "Technology",
+                  sector: str = "Unknown",
                   days_held: int = 365,
                   beta: float = 1.0) -> Tuple[Recommendation, dict]:
         """

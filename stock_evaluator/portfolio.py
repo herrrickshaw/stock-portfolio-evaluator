@@ -6,6 +6,13 @@ from pathlib import Path
 from typing import List, Optional
 
 
+def _clean_sector(value) -> Optional[str]:
+    """Empty/NaN sector cells (read by pandas as NaN) become None, not the string 'nan'."""
+    if pd.isna(value) or not str(value).strip():
+        return None
+    return str(value).strip()
+
+
 @dataclass
 class StockPosition:
     """Represents a single stock position in a portfolio."""
@@ -69,7 +76,7 @@ class Portfolio:
                 purchase_price=float(row['purchase_price']),
                 current_price=float(row['current_price']),
                 purchase_date=row.get('purchase_date'),
-                sector=row.get('sector')
+                sector=_clean_sector(row.get('sector'))
             )
             portfolio.positions.append(position)
 
@@ -93,7 +100,7 @@ class Portfolio:
                 purchase_price=float(row['purchase_price']),
                 current_price=float(row['current_price']),
                 purchase_date=row.get('purchase_date'),
-                sector=row.get('sector')
+                sector=_clean_sector(row.get('sector'))
             )
             portfolio.positions.append(position)
 
