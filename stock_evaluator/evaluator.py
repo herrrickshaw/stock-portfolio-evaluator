@@ -31,12 +31,12 @@ class PortfolioEvaluator:
         }
 
     def get_sector(self, symbol: str) -> str:
-        """Get sector for a stock symbol."""
+        """Get sector for a stock symbol ("Unknown" if it is not in sector_map)."""
         sym_upper = symbol.upper().replace(' ', '').replace('-', '')
         for key, sector in self.sector_map.items():
             if key in sym_upper:
                 return sector
-        return "Technology"
+        return "Unknown"
 
     def evaluate_position(self, position: StockPosition, current_price: float = None) -> Dict:
         """Evaluate a single position."""
