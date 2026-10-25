@@ -33,8 +33,11 @@ class PortfolioEvaluator:
     def get_sector(self, symbol: str) -> str:
         """Get sector for a stock symbol."""
         sym_upper = symbol.upper().replace(' ', '').replace('-', '')
+        if sym_upper in self.sector_map:
+            return self.sector_map[sym_upper]
         for key, sector in self.sector_map.items():
-            if key in sym_upper:
+            # 2-letter keys (LT) only match exactly: as substrings they hit every "...LTD" name
+            if len(key) >= 3 and key in sym_upper:
                 return sector
         return "Technology"
 
