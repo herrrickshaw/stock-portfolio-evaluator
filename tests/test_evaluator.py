@@ -90,3 +90,24 @@ class TestEvaluator(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestSectorLookup(unittest.TestCase):
+    """PortfolioEvaluator.get_sector maps symbols / INDmoney company names to sectors."""
+
+    def setUp(self):
+        self.evaluator = PortfolioEvaluator()
+
+    def test_exact_symbols(self):
+        self.assertEqual(self.evaluator.get_sector("TCS"), "Technology")
+        self.assertEqual(self.evaluator.get_sector("HDFCBANK"), "Financials")
+        self.assertEqual(self.evaluator.get_sector("LT"), "Industrials")
+        self.assertEqual(self.evaluator.get_sector("SUNPHARMA"), "Healthcare")
+
+    def test_company_name_ending_in_ltd_is_not_forced_to_industrials(self):
+        # INDmoney reports carry names like "... LTD"; the 2-letter key "LT" must not swallow them
+        self.assertEqual(self.evaluator.get_sector("SUN PHARMACEUTICAL INDUSTRIES LTD"), "Healthcare")
+        self.assertEqual(self.evaluator.get_sector("NTPC LTD"), "Energy")
+
+    def test_symbol_containing_lt_is_not_larsen(self):
+        self.assertNotEqual(self.evaluator.get_sector("HCLTECH"), "Industrials")
