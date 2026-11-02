@@ -1,0 +1,36 @@
+Loaded 3 positions from indmoney_pnl.csv
+
+================================================================================
+STOCK PORTFOLIO EVALUATION REPORT
+================================================================================
+
+PORTFOLIO SUMMARY
+--------------------------------------------------------------------------------
+Total Positions: 3
+Total Cost Basis: ₹31,000.00
+Total Current Value: ₹21,000.00
+Unrealized P&L: ₹-10,000.00
+Portfolio Return: -32.26%
+
+TOP 5 POTENTIAL GAINERS (Next 3 Months)
+--------------------------------------------------------------------------------
+1. WIPED (Technology) - Gain Potential: 20.60% | Current Return: -50.00% | Qty: 10 @ ₹50.00
+2. RELIANCE (Energy) - Gain Potential: 18.30% | Current Return: -60.00% | Qty: 5 @ ₹1600.00
+3. INFOSYS (Technology) - Gain Potential: 7.60% | Current Return: 25.00% | Qty: 10 @ ₹1250.00
+
+STOCKS TO HOLD/BUY
+--------------------------------------------------------------------------------
+* WIPED (STRONG_BUY) - Gain Potential: 20.60% | Return: -50.00% | Value: ₹500
+* RELIANCE (STRONG_BUY) - Gain Potential: 18.30% | Return: -60.00% | Value: ₹8,000
+
+STOCKS TO SELL
+--------------------------------------------------------------------------------
+* INFOSYS (SELL) - Current Return: 25.00% | Value: ₹12,500 | Holding Cost: ₹250.00
+
+RECOMMENDATION DISTRIBUTION
+--------------------------------------------------------------------------------
+STRONG_BUY: 2 stocks | Total Value: ₹8,500 | Avg Gain Potential: 19.45%
+SELL: 1 stocks | Total Value: ₹12,500 | Avg Gain Potential: 7.60%
+
+================================================================================
+0

@@ -1,0 +1,10 @@
+[tool.ruff]
+line-length = 110
+target-version = "py39"
+extend-exclude = ["from-global-market-research-platform"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

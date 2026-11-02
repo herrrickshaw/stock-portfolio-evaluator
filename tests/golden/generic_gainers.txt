@@ -1,0 +1,9 @@
+Loaded 6 positions from portfolio.csv
+
+TOP 3 POTENTIAL GAINERS (Next 3 Months)
+====================================================================================================
+1. ONGC                 Energy       Gain Potential:  18.30% | Current Return:  -40.00% | Qty:   100 @ ₹  120.00 = ₹      12,000
+2. WIPRO                nan          Gain Potential:  16.00% | Current Return:  -40.00% | Qty:    50 @ ₹  300.00 = ₹      15,000
+3. FOO                  Weird        Gain Potential:  16.00% | Current Return:  -40.00% | Qty:     7 @ ₹   60.00 = ₹         420
+
+0

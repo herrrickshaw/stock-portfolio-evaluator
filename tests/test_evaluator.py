@@ -1,7 +1,8 @@
 """Tests for stock portfolio evaluator."""
 
 import unittest
-from stock_evaluator import Portfolio, StockPosition, PortfolioEvaluator
+
+from stock_evaluator import Portfolio, PortfolioEvaluator, StockPosition
 
 
 class TestPortfolio(unittest.TestCase):
