@@ -1,9 +1,9 @@
 """Stock portfolio evaluation tool using newsvendor model."""
 
-from .portfolio import Portfolio, StockPosition
 from .evaluator import PortfolioEvaluator
-from .models import StockEvaluator, NewsvendorModel, Recommendation
 from .ingest import TaxReportIngestor
+from .models import NewsvendorModel, Recommendation, StockEvaluator
+from .portfolio import Portfolio, StockPosition
 
 __version__ = "1.0.0"
 __author__ = "Umashankar Triplicane Dwarakanathan"
