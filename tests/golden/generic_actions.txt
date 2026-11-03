@@ -1,0 +1,15 @@
+Loaded 6 positions from portfolio.csv
+
+STOCKS TO HOLD/BUY
+====================================================================================================
+• ONGC                 [STRONG_BUY  ] Return:  -40.00% | Gain Pot:  18.30% | Value: ₹      12,000
+• WIPRO                [STRONG_BUY  ] Return:  -40.00% | Gain Pot:  16.00% | Value: ₹      15,000
+• FOO                  [STRONG_BUY  ] Return:  -40.00% | Gain Pot:  16.00% | Value: ₹         420
+• TCS                  [HOLD        ] Return:   20.00% | Gain Pot:  12.60% | Value: ₹      42,000
+• SUNPHARMA            [HOLD        ] Return:    1.00% | Gain Pot:   8.00% | Value: ₹      20,200
+
+STOCKS TO SELL
+====================================================================================================
+• HDFCBANK             [SELL        ] Return:   20.00% | Holding Cost: ₹  180.00 | Value: ₹       9,000
+
+0

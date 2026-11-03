@@ -1,0 +1,12 @@
+Loaded 3 positions from indmoney_pnl.csv
+
+STOCKS TO HOLD/BUY
+====================================================================================================
+• WIPED                [STRONG_BUY  ] Return:  -50.00% | Gain Pot:  20.60% | Value: ₹         500
+• RELIANCE             [STRONG_BUY  ] Return:  -60.00% | Gain Pot:  18.30% | Value: ₹       8,000
+
+STOCKS TO SELL
+====================================================================================================
+• INFOSYS              [SELL        ] Return:   25.00% | Holding Cost: ₹  250.00 | Value: ₹      12,500
+
+0

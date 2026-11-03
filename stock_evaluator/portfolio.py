@@ -1,9 +1,32 @@
-"""Portfolio ingestion and management from Excel files."""
+"""Portfolio data model and loading from CSV / Excel files."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import List, Optional
 
 import pandas as pd
-from dataclasses import dataclass
-from pathlib import Path
-from typing import List, Optional
+
+REQUIRED_COLUMNS = frozenset({'symbol', 'quantity', 'purchase_price', 'current_price'})
+
+
+def _positions_from_dataframe(df: pd.DataFrame) -> List["StockPosition"]:
+    """Build positions from a frame with symbol/quantity/purchase_price/current_price columns."""
+    missing = set(REQUIRED_COLUMNS) - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
+
+    return [
+        StockPosition(
+            symbol=str(row['symbol']).upper(),
+            quantity=int(row['quantity']),
+            purchase_price=float(row['purchase_price']),
+            current_price=float(row['current_price']),
+            purchase_date=row.get('purchase_date'),
+            sector=row.get('sector'),
+        )
+        for _, row in df.iterrows()
+    ]
 
 
 @dataclass
@@ -55,48 +78,14 @@ class Portfolio:
         [optional: purchase_date, sector]
         """
         portfolio = cls()
-        df = pd.read_excel(filepath)
-
-        required_cols = {'symbol', 'quantity', 'purchase_price', 'current_price'}
-        missing = required_cols - set(df.columns)
-        if missing:
-            raise ValueError(f"Missing required columns: {missing}")
-
-        for _, row in df.iterrows():
-            position = StockPosition(
-                symbol=str(row['symbol']).upper(),
-                quantity=int(row['quantity']),
-                purchase_price=float(row['purchase_price']),
-                current_price=float(row['current_price']),
-                purchase_date=row.get('purchase_date'),
-                sector=row.get('sector')
-            )
-            portfolio.positions.append(position)
-
+        portfolio.positions.extend(_positions_from_dataframe(pd.read_excel(filepath)))
         return portfolio
 
     @classmethod
     def from_csv(cls, filepath: str) -> "Portfolio":
-        """Load portfolio from CSV file."""
+        """Load portfolio from CSV file (same columns as :meth:`from_excel`)."""
         portfolio = cls()
-        df = pd.read_csv(filepath)
-
-        required_cols = {'symbol', 'quantity', 'purchase_price', 'current_price'}
-        missing = required_cols - set(df.columns)
-        if missing:
-            raise ValueError(f"Missing required columns: {missing}")
-
-        for _, row in df.iterrows():
-            position = StockPosition(
-                symbol=str(row['symbol']).upper(),
-                quantity=int(row['quantity']),
-                purchase_price=float(row['purchase_price']),
-                current_price=float(row['current_price']),
-                purchase_date=row.get('purchase_date'),
-                sector=row.get('sector')
-            )
-            portfolio.positions.append(position)
-
+        portfolio.positions.extend(_positions_from_dataframe(pd.read_csv(filepath)))
         return portfolio
 
     def add_position(self, position: StockPosition) -> None:

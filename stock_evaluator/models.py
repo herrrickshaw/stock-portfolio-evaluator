@@ -1,9 +1,12 @@
 """Stock evaluation models including newsvendor inventory optimization."""
 
-import numpy as np
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Tuple
 from enum import Enum
+from typing import Dict, Tuple
+
+from . import config
 
 
 class Recommendation(Enum):
@@ -38,8 +41,8 @@ class NewsvendorModel:
     """
 
     def __init__(self,
-                 holding_cost_rate: float = 0.08,
-                 shortage_cost_rate: float = 0.25):
+                 holding_cost_rate: float = config.DEFAULT_HOLDING_COST_RATE,
+                 shortage_cost_rate: float = config.DEFAULT_SHORTAGE_COST_RATE):
         """
         Initialize newsvendor model.
 
@@ -58,8 +61,9 @@ class NewsvendorModel:
                          stock_price: float,
                          current_quantity: int,
                          expected_price_change: float,
-                         price_volatility: float = 0.25,
-                         holding_period_months: int = 3) -> NewsvendorAnalysis:
+                         price_volatility: float = config.DEFAULT_PRICE_VOLATILITY,
+                         holding_period_months: int = config.DEFAULT_HOLDING_PERIOD_MONTHS
+                         ) -> NewsvendorAnalysis:
         """
         Evaluate if current holding quantity is optimal using newsvendor model.
 
@@ -98,12 +102,44 @@ class NewsvendorModel:
         )
 
 
+def _score_from_return(current_return_pct: float) -> int:
+    """Score unrealised return (percent): deep losses score high (contrarian), big gains score low."""
+    for bound, points in config.RETURN_SCORE_BANDS:
+        if current_return_pct < bound:
+            return points
+    return config.RETURN_SCORE_ABOVE_ALL
+
+
+def _score_from_gain_potential(gain_potential_pct: float) -> int:
+    """Score the estimated 3-month gain potential (percent)."""
+    for bound, points in config.GAIN_SCORE_BANDS:
+        if gain_potential_pct > bound:
+            return points
+    return config.GAIN_SCORE_NONPOSITIVE
+
+
+def _score_from_cost_ratio(cost_to_gain_ratio: float) -> int:
+    """Penalty for newsvendor carrying cost relative to expected gain (ratio, unitless)."""
+    for bound, points in config.COST_RATIO_PENALTIES:
+        if cost_to_gain_ratio > bound:
+            return points
+    return 0
+
+
+def _classify(score: int) -> Recommendation:
+    """Map a total score onto a Recommendation."""
+    for bound, label in config.RECOMMENDATION_THRESHOLDS:
+        if score >= bound:
+            return Recommendation(label)
+    return Recommendation.STRONG_SELL
+
+
 class StockEvaluator:
     """Comprehensive stock evaluation engine."""
 
     def __init__(self,
-                 risk_free_rate: float = 0.06,
-                 market_return: float = 0.12):
+                 risk_free_rate: float = config.DEFAULT_RISK_FREE_RATE,
+                 market_return: float = config.DEFAULT_MARKET_RETURN):
         """
         Initialize evaluator.
 
@@ -141,48 +177,34 @@ class StockEvaluator:
         Returns:
             Estimated 3-month gain percentage
         """
-        base_quarterly = 0.03
-
         momentum_boost = 0
-        if current_return_pct < -10:
-            momentum_boost = 0.08
-        elif current_return_pct < -5:
-            momentum_boost = 0.05
-        elif current_return_pct > 20:
-            momentum_boost = -0.05
+        if current_return_pct < config.MOMENTUM_DEEP_LOSS[0]:
+            momentum_boost = config.MOMENTUM_DEEP_LOSS[1]
+        elif current_return_pct < config.MOMENTUM_MILD_LOSS[0]:
+            momentum_boost = config.MOMENTUM_MILD_LOSS[1]
+        elif current_return_pct > config.MOMENTUM_OVERHEATED[0]:
+            momentum_boost = config.MOMENTUM_OVERHEATED[1]
 
-        sector_factors = {
-            'Energy': 0.04,
-            'Financials': 0.02,
-            'Technology': 0.06,
-            'Healthcare': 0.03,
-            'Utilities': 0.01,
-            'Industrials': 0.03,
-            'Renewable': 0.05,
-        }
-        sector_boost = sector_factors.get(sector, 0.02)
+        sector_boost = config.SECTOR_GAIN_FACTORS.get(sector, config.DEFAULT_SECTOR_BOOST)
+        beta_adjusted = config.MARKET_QUARTERLY_RETURN * beta
 
-        market_quarterly = 0.03
-        beta_adjusted = market_quarterly * beta
-
-        total_estimate = base_quarterly + momentum_boost + sector_boost + beta_adjusted
-        return total_estimate
+        return config.BASE_QUARTERLY_GAIN + momentum_boost + sector_boost + beta_adjusted
 
     def recommend(self,
                   symbol: str,
                   current_price: float,
                   purchase_price: float,
                   quantity: int,
-                  sector: str = "Technology",
-                  days_held: int = 365,
-                  beta: float = 1.0) -> Tuple[Recommendation, dict]:
+                  sector: str = config.DEFAULT_SECTOR,
+                  days_held: int = config.ASSUMED_DAYS_HELD,
+                  beta: float = config.DEFAULT_BETA) -> Tuple[Recommendation, dict]:
         """
         Generate buy/hold/sell recommendation using multiple factors.
 
         Returns:
             (Recommendation, analysis_dict)
         """
-        analysis = {}
+        analysis: Dict[str, float] = {}
 
         current_return = (current_price - purchase_price) / purchase_price
         current_return_pct = current_return * 100
@@ -211,54 +233,14 @@ class StockEvaluator:
             'optimal_quantity': nv_analysis.optimal_quantity,
         })
 
-        score = 0
-
-        if current_return_pct < -30:
-            score += 25
-        elif current_return_pct < -10:
-            score += 15
-        elif current_return_pct < -5:
-            score += 5
-        elif current_return_pct < 0:
-            score += 0
-        elif current_return_pct < 10:
-            score -= 5
-        elif current_return_pct < 30:
-            score -= 10
-        else:
-            score -= 25
-
-        if gain_potential_pct > 15:
-            score += 25
-        elif gain_potential_pct > 10:
-            score += 15
-        elif gain_potential_pct > 5:
-            score += 5
-        elif gain_potential_pct > 0:
-            score += 0
-        else:
-            score -= 10
+        score = _score_from_return(current_return_pct) + _score_from_gain_potential(gain_potential_pct)
 
         if nv_analysis.total_inventory_cost > 0:
             cost_to_gain_ratio = nv_analysis.total_inventory_cost / max(
                 quantity * current_price * gain_potential, 1
             )
-            if cost_to_gain_ratio > 0.3:
-                score -= 15
-            elif cost_to_gain_ratio > 0.15:
-                score -= 5
-
-        if score >= 30:
-            recommendation = Recommendation.STRONG_BUY
-        elif score >= 15:
-            recommendation = Recommendation.BUY
-        elif score >= -15:
-            recommendation = Recommendation.HOLD
-        elif score >= -30:
-            recommendation = Recommendation.SELL
-        else:
-            recommendation = Recommendation.STRONG_SELL
+            score += _score_from_cost_ratio(cost_to_gain_ratio)
 
         analysis['recommendation_score'] = score
 
-        return recommendation, analysis
+        return _classify(score), analysis

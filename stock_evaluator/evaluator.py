@@ -1,34 +1,29 @@
 """Portfolio evaluation and recommendation engine."""
 
-import pandas as pd
-from typing import List, Dict, Tuple
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+from . import config
+from .models import StockEvaluator
 from .portfolio import Portfolio, StockPosition
-from .models import StockEvaluator, Recommendation
+
+REC_ORDER = ['STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL']
+HOLD_RECOMMENDATIONS = frozenset({'STRONG_BUY', 'BUY', 'HOLD'})
+RULE = "=" * 80
+THIN_RULE = "-" * 80
 
 
 class PortfolioEvaluator:
     """Evaluate portfolio holdings and generate recommendations."""
 
-    def __init__(self):
-        """Initialize evaluator."""
-        self.evaluator = StockEvaluator()
-        self.sector_map = {
-            'TCS': 'Technology', 'INFY': 'Technology', 'WIPRO': 'Technology',
-            'HDFC': 'Financials', 'ICICI': 'Financials', 'AXIS': 'Financials',
-            'RELIANCE': 'Energy', 'VEDANTA': 'Energy', 'ADANIPOWER': 'Energy',
-            'BHARTIARTL': 'Technology', 'TITAN': 'Consumer', 'LT': 'Industrials',
-            'MARUTI': 'Automobile', 'TATASTEEL': 'Materials', 'JSWSTEEL': 'Materials',
-            'DEEPAKFERT': 'Chemicals', 'BAJAJFINSV': 'Financials',
-            'ONGC': 'Energy', 'NTPC': 'Energy', 'JSWENERGY': 'Energy',
-            'SUNPHARMA': 'Healthcare', 'DMART': 'Retail',
-            'BAJAJ': 'Automobile', 'HDFCBANK': 'Financials',
-            'HDFCLIFE': 'Financials', 'SBILIFE': 'Financials',
-            'GLENMARK': 'Healthcare', 'COALINDIA': 'Materials',
-            'POWERGRID': 'Utilities', 'GAIL': 'Energy',
-            'TECHM': 'Technology', 'MINDTREE': 'Technology',
-            'LIC': 'Financials', 'IRCTC': 'Transport', 'NATIONALUM': 'Materials',
-        }
+    def __init__(self,
+                 evaluator: Optional[StockEvaluator] = None,
+                 sector_map: Optional[Dict[str, str]] = None):
+        """Create an evaluator; both collaborators are injectable (defaults come from config)."""
+        self.evaluator = evaluator if evaluator is not None else StockEvaluator()
+        self.sector_map = dict(sector_map if sector_map is not None else config.SYMBOL_SECTOR_MAP)
 
     def get_sector(self, symbol: str) -> str:
         """Get sector for a stock symbol."""
@@ -36,21 +31,14 @@ class PortfolioEvaluator:
         for key, sector in self.sector_map.items():
             if key in sym_upper:
                 return sector
-        return "Technology"
+        return config.DEFAULT_SECTOR
 
-    def evaluate_position(self, position: StockPosition, current_price: float = None) -> Dict:
+    def evaluate_position(self, position: StockPosition, current_price: Optional[float] = None) -> Dict:
         """Evaluate a single position."""
         price = current_price or position.current_price
         sector = position.sector or self.get_sector(position.symbol)
-        days_held = 365
-
-        beta_map = {
-            'Energy': 1.1, 'Technology': 1.2, 'Financials': 0.9,
-            'Healthcare': 0.8, 'Utilities': 0.7, 'Industrials': 1.0,
-            'Automobile': 1.1, 'Materials': 1.0, 'Retail': 1.0,
-            'Consumer': 0.9,
-        }
-        beta = beta_map.get(sector, 1.0)
+        days_held = config.ASSUMED_DAYS_HELD
+        beta = config.SECTOR_BETA.get(sector, config.DEFAULT_BETA)
 
         recommendation, analysis = self.evaluator.recommend(
             symbol=position.symbol,
@@ -150,7 +138,7 @@ class PortfolioEvaluator:
                 'holding_cost': eval_result['analysis']['holding_cost'],
             }
 
-            if rec in ['STRONG_BUY', 'BUY', 'HOLD']:
+            if rec in HOLD_RECOMMENDATIONS:
                 hold_list.append(eval_with_rec)
             else:
                 sell_list.append(eval_with_rec)
@@ -165,73 +153,87 @@ class PortfolioEvaluator:
         gainers = self.get_gainers_list(portfolio, top_n=5)
         hold_list, sell_list = self.get_hold_sell_list(portfolio)
 
-        report = []
-        report.append("=" * 80)
-        report.append("STOCK PORTFOLIO EVALUATION REPORT")
-        report.append("=" * 80)
-        report.append("")
+        lines: List[str] = [RULE, "STOCK PORTFOLIO EVALUATION REPORT", RULE, ""]
+        lines += _summary_section(eval_results['portfolio_summary'])
+        lines += _gainers_section(gainers)
+        lines += _hold_section(hold_list)
+        lines += _sell_section(sell_list)
+        lines += _distribution_section(eval_results['summary_by_recommendation'])
+        lines += ["", RULE]
+        return "\n".join(lines)
 
-        summary = eval_results['portfolio_summary']
-        report.append("PORTFOLIO SUMMARY")
-        report.append("-" * 80)
-        report.append(f"Total Positions: {summary['total_positions']}")
-        report.append(f"Total Cost Basis: ₹{summary['total_cost_basis']:,.2f}")
-        report.append(f"Total Current Value: ₹{summary['total_current_value']:,.2f}")
-        report.append(f"Unrealized P&L: ₹{summary['total_unrealized_pnl']:,.2f}")
-        report.append(f"Portfolio Return: {summary['portfolio_return_pct']:.2f}%")
-        report.append("")
 
-        report.append("TOP 5 POTENTIAL GAINERS (Next 3 Months)")
-        report.append("-" * 80)
-        for i, gainer in enumerate(gainers, 1):
-            report.append(
-                f"{i}. {gainer['symbol']} ({gainer['sector']}) - "
-                f"Gain Potential: {gainer['gain_potential_3m_pct']:.2f}% | "
-                f"Current Return: {gainer['current_return_pct']:.2f}% | "
-                f"Qty: {gainer['quantity']} @ ₹{gainer['current_price']:.2f}"
+def _summary_section(summary: Dict) -> List[str]:
+    """Portfolio summary block (currency in INR)."""
+    return [
+        "PORTFOLIO SUMMARY",
+        THIN_RULE,
+        f"Total Positions: {summary['total_positions']}",
+        f"Total Cost Basis: ₹{summary['total_cost_basis']:,.2f}",
+        f"Total Current Value: ₹{summary['total_current_value']:,.2f}",
+        f"Unrealized P&L: ₹{summary['total_unrealized_pnl']:,.2f}",
+        f"Portfolio Return: {summary['portfolio_return_pct']:.2f}%",
+        "",
+    ]
+
+
+def _gainers_section(gainers: List[Dict]) -> List[str]:
+    """Top potential gainers block."""
+    lines = ["TOP 5 POTENTIAL GAINERS (Next 3 Months)", THIN_RULE]
+    for i, gainer in enumerate(gainers, 1):
+        lines.append(
+            f"{i}. {gainer['symbol']} ({gainer['sector']}) - "
+            f"Gain Potential: {gainer['gain_potential_3m_pct']:.2f}% | "
+            f"Current Return: {gainer['current_return_pct']:.2f}% | "
+            f"Qty: {gainer['quantity']} @ ₹{gainer['current_price']:.2f}"
+        )
+    lines.append("")
+    return lines
+
+
+def _hold_section(hold_list: List[Dict]) -> List[str]:
+    """Hold/buy block (first 10 entries)."""
+    lines = ["STOCKS TO HOLD/BUY", THIN_RULE]
+    if hold_list:
+        for stock in hold_list[:10]:
+            lines.append(
+                f"* {stock['symbol']} ({stock['recommendation']}) - "
+                f"Gain Potential: {stock['gain_potential_3m_pct']:.2f}% | "
+                f"Return: {stock['current_return_pct']:.2f}% | "
+                f"Value: ₹{stock['value']:,.0f}"
             )
-        report.append("")
+    else:
+        lines.append("No stocks recommended to hold/buy")
+    lines.append("")
+    return lines
 
-        report.append("STOCKS TO HOLD/BUY")
-        report.append("-" * 80)
-        if hold_list:
-            for stock in hold_list[:10]:
-                report.append(
-                    f"* {stock['symbol']} ({stock['recommendation']}) - "
-                    f"Gain Potential: {stock['gain_potential_3m_pct']:.2f}% | "
-                    f"Return: {stock['current_return_pct']:.2f}% | "
-                    f"Value: ₹{stock['value']:,.0f}"
-                )
-        else:
-            report.append("No stocks recommended to hold/buy")
-        report.append("")
 
-        report.append("STOCKS TO SELL")
-        report.append("-" * 80)
-        if sell_list:
-            for stock in sell_list[:10]:
-                report.append(
-                    f"* {stock['symbol']} ({stock['recommendation']}) - "
-                    f"Current Return: {stock['current_return_pct']:.2f}% | "
-                    f"Value: ₹{stock['value']:,.0f} | "
-                    f"Holding Cost: ₹{stock['holding_cost']:.2f}"
-                )
-        else:
-            report.append("No stocks recommended to sell")
-        report.append("")
+def _sell_section(sell_list: List[Dict]) -> List[str]:
+    """Sell block (first 10 entries)."""
+    lines = ["STOCKS TO SELL", THIN_RULE]
+    if sell_list:
+        for stock in sell_list[:10]:
+            lines.append(
+                f"* {stock['symbol']} ({stock['recommendation']}) - "
+                f"Current Return: {stock['current_return_pct']:.2f}% | "
+                f"Value: ₹{stock['value']:,.0f} | "
+                f"Holding Cost: ₹{stock['holding_cost']:.2f}"
+            )
+    else:
+        lines.append("No stocks recommended to sell")
+    lines.append("")
+    return lines
 
-        report.append("RECOMMENDATION DISTRIBUTION")
-        report.append("-" * 80)
-        rec_summary = eval_results['summary_by_recommendation']
-        for rec in ['STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL']:
-            if rec in rec_summary:
-                data = rec_summary[rec]
-                report.append(
-                    f"{rec}: {data['count']} stocks | "
-                    f"Total Value: ₹{data['total_value']:,.0f} | "
-                    f"Avg Gain Potential: {data['avg_gain_potential']:.2f}%"
-                )
-        report.append("")
-        report.append("=" * 80)
 
-        return "\n".join(report)
+def _distribution_section(rec_summary: Dict) -> List[str]:
+    """Per-recommendation counts, value and mean gain potential."""
+    lines = ["RECOMMENDATION DISTRIBUTION", THIN_RULE]
+    for rec in REC_ORDER:
+        if rec in rec_summary:
+            data = rec_summary[rec]
+            lines.append(
+                f"{rec}: {data['count']} stocks | "
+                f"Total Value: ₹{data['total_value']:,.0f} | "
+                f"Avg Gain Potential: {data['avg_gain_potential']:.2f}%"
+            )
+    return lines

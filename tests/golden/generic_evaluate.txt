@@ -1,0 +1,42 @@
+Loaded 6 positions from portfolio.csv
+
+================================================================================
+STOCK PORTFOLIO EVALUATION REPORT
+================================================================================
+
+PORTFOLIO SUMMARY
+--------------------------------------------------------------------------------
+Total Positions: 6
+Total Cost Basis: ₹108,200.00
+Total Current Value: ₹98,620.00
+Unrealized P&L: ₹-9,580.00
+Portfolio Return: -8.85%
+
+TOP 5 POTENTIAL GAINERS (Next 3 Months)
+--------------------------------------------------------------------------------
+1. ONGC (Energy) - Gain Potential: 18.30% | Current Return: -40.00% | Qty: 100 @ ₹120.00
+2. WIPRO (nan) - Gain Potential: 16.00% | Current Return: -40.00% | Qty: 50 @ ₹300.00
+3. FOO (Weird) - Gain Potential: 16.00% | Current Return: -40.00% | Qty: 7 @ ₹60.00
+4. TCS (Technology) - Gain Potential: 12.60% | Current Return: 20.00% | Qty: 10 @ ₹4200.00
+5. HDFCBANK (nan) - Gain Potential: 8.00% | Current Return: 20.00% | Qty: 5 @ ₹1800.00
+
+STOCKS TO HOLD/BUY
+--------------------------------------------------------------------------------
+* ONGC (STRONG_BUY) - Gain Potential: 18.30% | Return: -40.00% | Value: ₹12,000
+* WIPRO (STRONG_BUY) - Gain Potential: 16.00% | Return: -40.00% | Value: ₹15,000
+* FOO (STRONG_BUY) - Gain Potential: 16.00% | Return: -40.00% | Value: ₹420
+* TCS (HOLD) - Gain Potential: 12.60% | Return: 20.00% | Value: ₹42,000
+* SUNPHARMA (HOLD) - Gain Potential: 8.00% | Return: 1.00% | Value: ₹20,200
+
+STOCKS TO SELL
+--------------------------------------------------------------------------------
+* HDFCBANK (SELL) - Current Return: 20.00% | Value: ₹9,000 | Holding Cost: ₹180.00
+
+RECOMMENDATION DISTRIBUTION
+--------------------------------------------------------------------------------
+STRONG_BUY: 3 stocks | Total Value: ₹27,420 | Avg Gain Potential: 16.77%
+HOLD: 2 stocks | Total Value: ₹62,200 | Avg Gain Potential: 10.30%
+SELL: 1 stocks | Total Value: ₹9,000 | Avg Gain Potential: 8.00%
+
+================================================================================
+0
