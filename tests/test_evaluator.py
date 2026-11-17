@@ -1,5 +1,7 @@
 """Tests for stock portfolio evaluator."""
 
+import os
+import tempfile
 import unittest
 from stock_evaluator import Portfolio, StockPosition, PortfolioEvaluator
 
@@ -86,6 +88,24 @@ class TestEvaluator(unittest.TestCase):
         """Test hold/sell classification."""
         hold_list, sell_list = self.evaluator.get_hold_sell_list(self.portfolio)
         self.assertEqual(len(hold_list) + len(sell_list), 2)
+
+    def test_unknown_ticker_sector_is_explicit(self):
+        """Unmapped tickers must not silently default to Technology."""
+        self.assertEqual(self.evaluator.get_sector("NOSUCHCO"), "Unknown")
+        self.assertEqual(self.evaluator.get_sector("TCS"), "Technology")
+
+    def test_blank_sector_cell_is_not_nan(self):
+        """An empty sector cell in a CSV must load as None, not the string 'nan'."""
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "p.csv")
+            with open(path, "w") as f:
+                f.write("symbol,quantity,purchase_price,current_price,sector\n"
+                        "TCS,10,3500,4200,Technology\n"
+                        "NOSUCHCO,5,100,90,\n")
+            portfolio = Portfolio.from_csv(path)
+        self.assertIsNone(portfolio.positions[1].sector)
+        result = self.evaluator.evaluate_position(portfolio.positions[1])
+        self.assertEqual(result['sector'], "Unknown")
 
 
 if __name__ == '__main__':
