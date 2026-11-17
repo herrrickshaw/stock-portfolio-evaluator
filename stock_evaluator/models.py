@@ -4,6 +4,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Tuple
 from enum import Enum
+from statistics import NormalDist
 
 
 class Recommendation(Enum):
@@ -84,7 +85,11 @@ class NewsvendorModel:
         underage_cost = current_quantity * shortage_cost_per_share
         overage_cost = current_quantity * holding_cost_per_share
 
-        optimal_fraction = max(0, min(1, self.critical_ratio() + expected_price_change))
+        # Critical fractile: demand for the position (as a multiple of the current holding) is taken
+        # as N(1 + expected change, annual vol * sqrt(period)); Q* = F^-1(Cu / (Cu + Co)).
+        sigma_h = price_volatility * np.sqrt(period_fraction)
+        z = NormalDist().inv_cdf(self.critical_ratio())
+        optimal_fraction = max(0, min(1, 1 + expected_price_change + z * sigma_h))
         optimal_quantity = int(current_quantity * optimal_fraction)
 
         return NewsvendorAnalysis(

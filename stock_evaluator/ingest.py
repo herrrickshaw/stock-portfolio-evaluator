@@ -54,10 +54,7 @@ class TaxReportIngestor:
                 purchase_price = buy_amount_total / buy_qty
                 current_value = buy_amount_total + unrealized_pl
 
-                if current_value <= 0:
-                    current_price = purchase_price * 0.5
-                else:
-                    current_price = max(current_value / buy_qty, 0.01)
+                current_price = max(current_value, 0.0) / buy_qty
 
                 position = StockPosition(
                     symbol=stock_name.upper(),
