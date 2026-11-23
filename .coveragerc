@@ -1,0 +1,15 @@
+[run]
+source = stock_evaluator
+omit =
+    tests/*
+    */conftest.py
+    */test_*.py
+    examples/*
+    notebooks/*
+    from-global-market-research-platform/*
+    setup.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
