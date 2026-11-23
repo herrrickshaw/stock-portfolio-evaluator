@@ -141,3 +141,32 @@ def test_holding_period_scales_costs():
     one = NewsvendorModel().evaluate_holding(100.0, 10, 0.0, holding_period_months=12)
     assert one.holding_cost == pytest.approx(10 * 100 * 0.08)
     assert one.shortage_cost == pytest.approx(10 * 100 * 0.25)
+
+
+# Exact-boundary cases. The inputs below were chosen so the float arithmetic lands exactly on
+# the threshold (gain 15.0 / 0.0, cost-to-gain ratio 0.3 / 0.15), so strict vs non-strict comparisons differ.
+def test_gain_potential_exactly_15_is_not_above_15():
+    # -7% (+5); gain 3+5+4+3 = 15.0% exactly -> +15, not +25; ratio .55 -> -15
+    _, a = rec(93, "Energy", 1.0)
+    assert a["gain_potential_3m_pct"] == 15.0
+    assert a["recommendation_score"] == 5
+
+
+def test_gain_potential_exactly_zero_scores_penalty():
+    # 0% (-5); gain 0.0% -> -10; cost penalty -15
+    _, a = rec(100, "Technology", -3.0)
+    assert a["gain_potential_3m_pct"] == 0.0
+    assert a["recommendation_score"] == -30
+
+
+def test_cost_to_gain_ratio_exactly_point_three_takes_small_penalty():
+    # +25% (-10); gain 27.5% (+25); ratio exactly 0.3 -> only -5
+    r, a = rec(125, "Energy", 8.5, qty=1)
+    assert a["recommendation_score"] == 10
+    assert r == R.HOLD
+
+
+def test_cost_to_gain_ratio_exactly_point_one_five_has_no_penalty():
+    # 0% (-5); gain 55% (+25); ratio exactly 0.15 -> no penalty
+    _, a = rec(100, "Energy", 16.0, qty=1)
+    assert a["recommendation_score"] == 20
